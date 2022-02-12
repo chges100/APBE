@@ -15,6 +15,7 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.stencilview import StencilView
 from kivy.uix.button import Button
 from kivy.lang import Builder
+from scipy.interpolate import interp2d
 
 from kivy.config import Config
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
@@ -86,9 +87,9 @@ class ImageViewClickable(ImageView):
                     if self.sp.collide_point(touch.x, touch.y):
                         loc_x, loc_y = self.sp.to_local(touch.x, touch.y)
                         Color(1,0,0)
-                        l = 10
-                        Rectangle(pos=(loc_x - l/2, loc_y - l/2), size=(l,l), color=(1,0,0))
-
+                        l = 24
+                        Rectangle(pos=(loc_x - l/2, loc_y - l/2), size=(l,l))
+                        Color(1,1,1)
                         self.point_list.append((loc_x, loc_y))
                         print(self.point_list)
 
@@ -98,7 +99,7 @@ class MyLayout(GridLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.sample_size=5
+        self.sample_radius=8
 
         self.point_list = []
         
@@ -106,11 +107,12 @@ class MyLayout(GridLayout):
         self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
         self.img = cv2.flip(self.img, 0)
 
+        print(self.img.shape)
+
         self.imview_orig = ImageViewClickable(self.point_list, size_hint=(0.5,0.8))
         self.imview_bg = ImageView(size_hint=(0.5,0.8))
         self.imview_orig.set_image(self.img)
         self.plview = PointListView(self.point_list)
-        self.plview2 = PointListView(self.point_list)
 
         self.btn_calc = Button(text='Calculate Background Model')
         self.btn_calc.bind(on_press = self.btn_calc_press)
@@ -119,7 +121,6 @@ class MyLayout(GridLayout):
         self.add_widget(self.imview_bg)
         self.add_widget(self.plview)
         self.add_widget(self.btn_calc)
-        #self.add_widget(self.plview2)
 
     def on_touch_down(self, touch):
 
@@ -128,11 +129,41 @@ class MyLayout(GridLayout):
         return super().on_touch_down(touch)
 
     def btn_calc_press(self, instance):
-        print('Button pressed')
+        x = []
+        y = []
+        r = []
+        g = []
+        b = []
+
+        for point in self.point_list:
+            point = np.array(point).astype(int)
+            x.append(point[1])
+            y.append(point[0])
+            r.append(np.median(self.img[point[1]-self.sample_radius:point[1]+self.sample_radius, point[0]-self.sample_radius:point[0]+self.sample_radius, 0]))
+            g.append(np.median(self.img[point[1]-self.sample_radius:point[1]+self.sample_radius, point[0]-self.sample_radius:point[0]+self.sample_radius, 1]))
+            b.append(np.median(self.img[point[1]-self.sample_radius:point[1]+self.sample_radius, point[0]-self.sample_radius:point[0]+self.sample_radius, 2]))
+
+        print(g)
+
+        int_r = interp2d(x,y,r, kind = 'cubic')
+        int_g = interp2d(x,y,g, kind = 'cubic')
+        int_b = interp2d(x,y,b, kind = 'cubic')
+
+        x_coord = np.arange(0, self.img.shape[0], 1)
+        y_coord = np.arange(0, self.img.shape[1], 1)
+
+        bkg_r = int_r(x_coord, y_coord)
+        bkg_g = int_g(x_coord, y_coord)
+        bkg_b = int_b(x_coord, y_coord)
+
+        background = np.array([bkg_r, bkg_g, bkg_b])
+        background = np.transpose(background, (2,1,0))
+        background = np.asarray(background, dtype=np.float32)
+
+        self.imview_bg.set_image(background)
         
 class APBE(App):
 
-    # This returns the content we want in the window
     def build(self):
     
         return MyLayout(cols=2, rows=2)
