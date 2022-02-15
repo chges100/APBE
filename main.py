@@ -60,11 +60,15 @@ class APBE_Instance():
         self.point_list.clear()
 
     def load_image(self, img_path):
-        self.img_path = img_path
+        try:
+            self.img_path = img_path
 
-        self.img_original = cv2.imread(self.img_path, cv2.IMREAD_COLOR | cv2.IMREAD_ANYDEPTH)
-        self.img_original = cv2.cvtColor(self.img_original, cv2.COLOR_BGR2RGB)
-        self.img_original = cv2.flip(self.img_original, 0)
+            self.img_original = cv2.imread(self.img_path, cv2.IMREAD_COLOR | cv2.IMREAD_ANYDEPTH)
+            self.img_original = cv2.cvtColor(self.img_original, cv2.COLOR_BGR2RGB)
+            self.img_original = cv2.flip(self.img_original, 0)
+        except Exception as e:
+            print('Something went wrong while loading the image:')
+            print(e)
 
 
 
@@ -72,7 +76,6 @@ class APBE_Instance():
         x = []
         y = []
         samples = []
-        background = np.zeros(self.img_original.shape)
 
         for sample_point in self.point_list:
             x.append(sample_point.x)
@@ -84,6 +87,7 @@ class APBE_Instance():
         samples = np.array(samples)
 
         try:
+            background = np.zeros(self.img_original.shape)
             x_coord = np.arange(0, self.img_original.shape[0], 1)
             y_coord = np.arange(0, self.img_original.shape[1], 1)
 
@@ -95,11 +99,18 @@ class APBE_Instance():
             self.img_background = np.asarray(background, dtype=np.float32)
 
         except Exception as e:
+            print('Something went wrong during calculating the background')
             print(e)
 
+
     def subtract_background(self):
-        mean = np.mean(self.img_original, axis=(0,1,2))  
-        self.img_original = self.img_original - self.img_background + mean
+        try:
+            mean = np.mean(self.img_original, axis=(0,1,2))  
+            self.img_original = self.img_original - self.img_background + mean
+        except Exception as e:
+            print('Something went wrong during subtracting the background')
+            print(e) 
+        
 
 
 class SamplePoint():
@@ -194,18 +205,23 @@ class ImageView(StencilView):
         self.add_widget(self.sp)
 
     def set_image(self, img):
-        
-        w, h, channels = img.shape
-        self.texture = Texture.create(size=(h,w))
-        if channels == 1:
-            self.texture.blit_buffer(img.flatten(), colorfmt='luminance', bufferfmt='float')
-        elif channels == 3:
-            self.texture.blit_buffer(img.flatten(), colorfmt='rgb', bufferfmt='float')
-        else:
-            print('Wrong amount of color channels in image')
 
-        with self.sp.canvas:
-            Rectangle(texture = self.texture, pos=(0,0), size=(h,w))
+        try:  
+            w, h, channels = img.shape
+            self.texture = Texture.create(size=(h,w))
+            if channels == 1:
+                self.texture.blit_buffer(img.flatten(), colorfmt='luminance', bufferfmt='float')
+            elif channels == 3:
+                self.texture.blit_buffer(img.flatten(), colorfmt='rgb', bufferfmt='float')
+            else:
+                print('Wrong amount of color channels in image')
+
+            with self.sp.canvas:
+                Rectangle(texture = self.texture, pos=(0,0), size=(h,w))
+        
+        except Exception as e:
+            print('Something set wrang displaying the image:')
+            print(e)
 
     def on_touch_down(self, touch):
         if self.collide_point(touch.x, touch.y):
