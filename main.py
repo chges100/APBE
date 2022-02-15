@@ -1,3 +1,4 @@
+from turtle import back
 import numpy as np
 
 import kivy
@@ -35,21 +36,96 @@ Builder.load_string('''
         orientation: 'vertical'
 ''')
 
+class APBE_Instance():
+    def __init__(self):
+        self.img_original = 0
+        self.img_background = 0
+        self.point_list = []
+        self.img_path = ''
+        self.sample_radius = 5
+
+    def set_img_original(self, img_original):
+        self.img_original = img_original
+
+    def set_img_background(self, img_background):
+        self.img_background = img_background
+
+    def add_sample_point(self, x,y):
+        self.point_list.append(SamplePoint(x,y, self.img_original))
+
+    def remove_sample_point(self, sample_point):
+        self.point_list.remove(sample_point)
+
+    def clear_sample_points(self):
+        self.point_list.clear()
+
+    def load_image(self, img_path):
+        self.img_path = img_path
+
+        self.img_original = cv2.imread(self.img_path, cv2.IMREAD_COLOR | cv2.IMREAD_ANYDEPTH)
+        self.img_original = cv2.cvtColor(self.img_original, cv2.COLOR_BGR2RGB)
+        self.img_original = cv2.flip(self.img_original, 0)
+
+
+
+    def calculate_background(self):
+        x = []
+        y = []
+        samples = []
+        background = np.zeros(self.img_original.shape)
+
+        for sample_point in self.point_list:
+            x.append(sample_point.x)
+            y.append(sample_point.y)
+            median = sample_point.calculate_sample_median(self.sample_radius)
+
+            samples.append(median)
+        
+        samples = np.array(samples)
+
+        try:
+            x_coord = np.arange(0, self.img_original.shape[0], 1)
+            y_coord = np.arange(0, self.img_original.shape[1], 1)
+
+            for c in range(self.img_original.shape[2]):
+                interpolator = interp2d(x,y,samples[:, c], kind = 'cubic')
+                background[:, :, c] = interpolator(x_coord, y_coord).transpose()
+
+            background = np.transpose(background, (0, 1, 2))
+            self.img_background = np.asarray(background, dtype=np.float32)
+
+        except Exception as e:
+            print(e)
+
+    def subtract_background(self):
+        mean = np.mean(self.img_original, axis=(0,1,2))  
+        self.img_original = self.img_original - self.img_background + mean
+
+
+class SamplePoint():
+    def __init__(self, x,y, img):
+       self.x = x
+       self.y = y
+       self.img = img
+
+    def calculate_sample_median(self, sample_radius):
+        median = []
+
+        # maybe do something more sophisticated here
+        if self.x - sample_radius >= 0 and self.x + sample_radius < self.img.shape[0] and self.y - sample_radius >= 0 and self.y + sample_radius < self.img.shape[1]:
+            for c in range(self.img.shape[2]):
+                median.append(np.median(self.img[self.x - sample_radius : self.x + sample_radius, self.y - sample_radius : self.y + sample_radius, c]))
+
+        return np.array(median)
+
 class ControlView(GridLayout, StencilView):
-    def __init__(self, imview_orig, imview_bg, point_list, **kwargs):
+    def __init__(self, apbe, imview_orig, imview_bg, **kwargs):
         StencilView.__init__(self, **kwargs)
         GridLayout.__init__(self, **kwargs)
 
+        self.apbe = apbe
         self.imview_orig = imview_orig
         self.imview_bg = imview_bg
-        self.point_list = point_list
-
-        self.sample_radius=8
-
-        self.img = np.asarray(np.zeros((100,100,3)), dtype=np.float32)
-        self.img_bg = np.asarray(np.zeros((100,100,3)), dtype=np.float32)
-
-        self.imview_orig.set_image(self.img)
 
         self.btn_load = Button(text='Load 32bit TIFF')
         self.btn_load.bind(on_press = self.btn_load_press)
@@ -79,86 +155,54 @@ class ControlView(GridLayout, StencilView):
         self.load_popup.open()
 
     def btn_open_press(self, instance):
-        self.img_path = self.filechooser.selection[0]
+        self.apbe.load_image(self.filechooser.selection[0])
 
-        self.img = cv2.imread(self.img_path, cv2.IMREAD_COLOR | cv2.IMREAD_ANYDEPTH)
-        self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
-        self.img = cv2.flip(self.img, 0)
-
-        self.imview_orig.set_image(self.img)
+        self.imview_orig.set_image(self.apbe.img_original)
 
         self.load_popup.dismiss()
     
     def btn_sub_press(self, instance):
-        means = np.mean(self.img, axis=(0,1))
-        
-        self.img = self.img - self.img_bg
-        #self.img[:,:,0] = self.img[:,:,0] + means[0]
-        #self.img[:,:,1] = self.img[:,:,1] + means[1]
-        #self.img[:,:,2] = self.img[:,:,2] + means[2]
-
-        self.imview_orig.set_image(self.img)
+        self.apbe.subtract_background()
+        self.imview_orig.set_image(self.apbe.img_original)
 
     def btn_calc_press(self, instance):
-        x = []
-        y = []
-        r = []
-        g = []
-        b = []
-
-        for point in self.point_list:
-            point = np.array(point)
-            x.append(point[1])
-            y.append(point[0])
-            r.append(np.median(self.img[point[1]-self.sample_radius:point[1]+self.sample_radius, point[0]-self.sample_radius:point[0]+self.sample_radius, 0]))
-            g.append(np.median(self.img[point[1]-self.sample_radius:point[1]+self.sample_radius, point[0]-self.sample_radius:point[0]+self.sample_radius, 1]))
-            b.append(np.median(self.img[point[1]-self.sample_radius:point[1]+self.sample_radius, point[0]-self.sample_radius:point[0]+self.sample_radius, 2]))
+        self.apbe.calculate_background()
+        self.imview_bg.set_image(self.apbe.img_background)
         
-        try:
-            int_r = interp2d(x,y,r, kind = 'cubic')
-            int_g = interp2d(x,y,g, kind = 'cubic')
-            int_b = interp2d(x,y,b, kind = 'cubic')
-
-            x_coord = np.arange(0, self.img.shape[0], 1)
-            y_coord = np.arange(0, self.img.shape[1], 1)
-
-            bkg_r = int_r(x_coord, y_coord)
-            bkg_g = int_g(x_coord, y_coord)
-            bkg_b = int_b(x_coord, y_coord)
-
-            self.img_bg = np.array([bkg_r, bkg_g, bkg_b])
-            self.img_bg = np.transpose(self.img_bg, (2,1,0))
-            self.img_bg = np.asarray(self.img_bg, dtype=np.float32)
-
-            self.imview_bg.set_image(self.img_bg)
-        except Exception as e:
-            print(e)
 
 
 class PointListView(RecycleView):
-    def __init__(self, point_list, **kwargs):
+    def __init__(self, apbe, **kwargs):
         super(PointListView, self).__init__(**kwargs)
-        self.data = [({'text': str(point)}) for point in point_list]
+
+        self.apbe = apbe
+        self.data = [({'text': 'x = ' + str(sample_point.x) + ', y = ' + str(sample_point.y)}) for sample_point in self.apbe.point_list]
         self.viewclass = 'Label'
 
-    def update_data(self, point_list):
-        self.data = [({'text': str(point)}) for point in point_list]
+    def update_data(self):
+        self.data = [({'text': 'x = ' + str(sample_point.x) + ', y = ' + str(sample_point.y)}) for sample_point in self.apbe.point_list]
 
 class ImageView(StencilView):
-    def __init__(self, **kwargs):
+    def __init__(self, apbe, **kwargs):
         super(ImageView, self).__init__(**kwargs)
         
+        self.apbe = apbe
+
         self.sp = ScatterPlane()
         self.sp.do_translation=True
 
         self.add_widget(self.sp)
 
     def set_image(self, img):
-        self.img = img
         
-        w, h, _ = self.img.shape
+        w, h, channels = img.shape
         self.texture = Texture.create(size=(h,w))
-        self.texture.blit_buffer(self.img.flatten(), colorfmt='rgb', bufferfmt='float')
+        if channels == 1:
+            self.texture.blit_buffer(img.flatten(), colorfmt='luminance', bufferfmt='float')
+        elif channels == 3:
+            self.texture.blit_buffer(img.flatten(), colorfmt='rgb', bufferfmt='float')
+        else:
+            print('Wrong amount of color channels in image')
 
         with self.sp.canvas:
             Rectangle(texture = self.texture, pos=(0,0), size=(h,w))
@@ -176,9 +220,9 @@ class ImageView(StencilView):
                 super(ImageView, self).on_touch_down(touch)
 
 class ImageViewClickable(ImageView):
-    def __init__(self, point_list, **kwargs):
-        super(ImageViewClickable, self).__init__(**kwargs)
-        self.point_list = point_list
+    def __init__(self, apbe, **kwargs):
+        super(ImageViewClickable, self).__init__(apbe, **kwargs)
+        self.apbe = apbe
 
     def on_touch_down(self, touch):
         if self.collide_point(touch.x, touch.y):
@@ -186,26 +230,25 @@ class ImageViewClickable(ImageView):
                 with self.sp.canvas:
                     if self.sp.collide_point(touch.x, touch.y):
                         loc_x, loc_y = self.sp.to_local(int(touch.x), int(touch.y))
-                        if loc_x > 0 and loc_x < self.img.shape[1] and loc_y > 0 and loc_y < self.img.shape[0]:
+                        if loc_x > 0 and loc_x < self.apbe.img_original.shape[1] and loc_y > 0 and loc_y < self.apbe.img_original.shape[0]:
                             Color(1,0,0)
                             l = 24
                             Rectangle(pos=(loc_x - l/2, loc_y - l/2), size=(l,l))
                             Color(1,1,1)
-                            self.point_list.append((int(loc_x), int(loc_y)))
+                            # swap is intended
+                            self.apbe.add_sample_point(int(loc_y), int(loc_x))
 
             super(ImageViewClickable, self).on_touch_down(touch)
 
 class MyLayout(GridLayout):
-    def __init__(self, **kwargs):
+    def __init__(self, apbe, **kwargs):
         super().__init__(**kwargs)
+        self.apbe = apbe   
 
-        self.point_list = []
-    
-
-        self.imview_orig = ImageViewClickable(self.point_list, size_hint=(0.5,0.8))
-        self.imview_bg = ImageView(size_hint=(0.5,0.8))
-        self.plview = PointListView(self.point_list, size_hint=(0.5,0.2))
-        self.ctrl_view = ControlView(self.imview_orig, self.imview_bg, self.point_list, rows=2, cols=2, size_hint=(0.5,0.2))
+        self.imview_orig = ImageViewClickable(self.apbe, size_hint=(0.5,0.8))
+        self.imview_bg = ImageView(self.apbe, size_hint=(0.5,0.8))
+        self.plview = PointListView(self.apbe, size_hint=(0.5,0.2))
+        self.ctrl_view = ControlView(self.apbe, self.imview_orig, self.imview_bg, rows=2, cols=2, size_hint=(0.5,0.2))
 
         self.add_widget(self.imview_orig)
         self.add_widget(self.imview_bg)
@@ -214,15 +257,15 @@ class MyLayout(GridLayout):
 
     def on_touch_down(self, touch):
 
-        self.plview.update_data(self.point_list)
+        self.plview.update_data()
 
         return super().on_touch_down(touch)
         
 class APBE(App):
 
     def build(self):
-    
-        return MyLayout(cols=2, rows=2)
+        apbe = APBE_Instance()
+        return MyLayout(apbe, cols=2, rows=2)
         
   
 apbe = APBE()
