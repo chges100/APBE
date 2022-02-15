@@ -1,0 +1,50 @@
+#:kivy ! ex
+
+<ControlView@StencilView>:
+    GridLayout:
+        cols: 2
+        rows: 2
+
+        Button:
+            text: 'Load 32bit TIFF'
+            id: btn_load
+            on_press: self.btn_load_press
+        Button:
+            text: 'Calculate Background Model'
+            id: btn_calc
+            on_press: self.btn_calc_press
+        Button:
+            text: 'Subtract Background'
+            id: btn_sub
+            on_press: self.btn_sub_press
+
+<OpenDialog@Popup>:
+    GridLayout:
+        rows: 3
+        FileChooserIconView:
+            size_hint_x: 1
+            size_hint_y: 0.8
+        Button:
+            text: 'Open'
+            id: btn_open
+            on_press: self.btn_open
+            size_hint_x: 1
+            size_hint_y: 0.1
+        Button:
+            text: 'Cancel'
+            id: btn_cancel
+            on_press: self.btn_cancel
+            size_hint_x: 1
+            size_hint_y: 0.1
+
+<PointListView@ReceicleView>:
+    viewclass: 'Label'
+    
+    RecycleBoxLayout:
+        default_size: None, dp(56)
+        default_size_hint: 1, None
+        size_hint_y: None
+        height: self.minimum_height
+        orientation: 'vertical'
+
+
