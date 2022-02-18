@@ -236,9 +236,10 @@ class ImageView(StencilView):
                 super(ImageView, self).on_touch_down(touch)
 
 class ImageViewClickable(ImageView):
-    def __init__(self, apbe, **kwargs):
+    def __init__(self, apbe, plview, **kwargs):
         super(ImageViewClickable, self).__init__(apbe, **kwargs)
         self.apbe = apbe
+        self.plview = plview
 
     def on_touch_down(self, touch):
         if self.collide_point(touch.x, touch.y):
@@ -253,6 +254,7 @@ class ImageViewClickable(ImageView):
                             Color(1,1,1)
                             # swap is intended
                             self.apbe.add_sample_point(int(loc_y), int(loc_x))
+                            self.plview.update_data()
 
             super(ImageViewClickable, self).on_touch_down(touch)
 
@@ -261,9 +263,9 @@ class MyLayout(GridLayout):
         super().__init__(**kwargs)
         self.apbe = apbe   
 
-        self.imview_orig = ImageViewClickable(self.apbe, size_hint=(0.5,0.8))
-        self.imview_bg = ImageView(self.apbe, size_hint=(0.5,0.8))
         self.plview = PointListView(self.apbe, size_hint=(0.5,0.2))
+        self.imview_orig = ImageViewClickable(self.apbe, self.plview, size_hint=(0.5,0.8))
+        self.imview_bg = ImageView(self.apbe, size_hint=(0.5,0.8))     
         self.ctrl_view = ControlView(self.apbe, self.imview_orig, self.imview_bg, rows=2, cols=2, size_hint=(0.5,0.2))
 
         self.add_widget(self.imview_orig)
@@ -273,7 +275,7 @@ class MyLayout(GridLayout):
 
     def on_touch_down(self, touch):
 
-        self.plview.update_data()
+        #self.plview.update_data()
 
         return super().on_touch_down(touch)
         
